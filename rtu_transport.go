@@ -154,12 +154,7 @@ func (rt *rtuTransport) readRTUFrame() (res *pdu, err error) {
 	}
 
 	// figure out how many further bytes to read
-	if rxbuf[1] == fcReadCoils && rxbuf[2] == 0 {
-		// (24/07/2024 kontornl) hanyang water meter malformed protocol
-		bytesNeeded, err = expectedResponseLenth(uint8(rxbuf[1]), uint8(rxbuf[3]))
-	} else {
-		bytesNeeded, err = expectedResponseLenth(uint8(rxbuf[1]), uint8(rxbuf[2]))
-	}
+	bytesNeeded, err = expectedResponseLenth(uint8(rxbuf[1]), uint8(rxbuf[2]))
 	if err != nil {
 		return
 	}
@@ -171,6 +166,10 @@ func (rt *rtuTransport) readRTUFrame() (res *pdu, err error) {
 	if byteCount+bytesNeeded > maxRTUFrameLength {
 		err = ErrProtocolError
 		return
+	}
+	if rxbuf[1] == fcReadCoils && rxbuf[2] == 0 {
+		// (24/07/2024 kontornl) hanyang water meter malformed protocol
+		bytesNeeded += 2
 	}
 
 	byteCount, err = io.ReadFull(rt.link, rxbuf[3:3+bytesNeeded])
@@ -188,9 +187,18 @@ func (rt *rtuTransport) readRTUFrame() (res *pdu, err error) {
 	crc.add(rxbuf[0 : 3+bytesNeeded-2])
 
 	// compare CRC values
-	if !crc.isEqual(rxbuf[3+bytesNeeded-2], rxbuf[3+bytesNeeded-1]) {
-		err = ErrBadCRC
-		return
+	if rxbuf[1] == fcReadCoils && rxbuf[2] == 0 {
+		// (24/07/2024 kontornl) hanyang water meter malformed protocol
+		// in fact rxbuf[2:4] indicates the start address, not length as used here
+		// this processing method has its own defect
+		rxbuf[2] = rxbuf[3]
+		rxbuf[3] = rxbuf[5]
+		bytesNeeded = int(rxbuf[2]) + 2
+	} else {
+		if !crc.isEqual(rxbuf[3+bytesNeeded-2], rxbuf[3+bytesNeeded-1]) {
+			err = ErrBadCRC
+			return
+		}
 	}
 
 	res = &pdu{
