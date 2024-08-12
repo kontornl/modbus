@@ -194,6 +194,8 @@ func (rt *rtuTransport) readRTUFrame() (res *pdu, err error) {
 		rxbuf[2] = rxbuf[3]
 		rxbuf[3] = rxbuf[5]
 		bytesNeeded = int(rxbuf[2]) + 2
+		// (12/08/2024 kontornl) receive extra 1 byte from rxbuf
+		_, err = io.ReadFull(rt.link, rxbuf[5:6])
 	} else {
 		if !crc.isEqual(rxbuf[3+bytesNeeded-2], rxbuf[3+bytesNeeded-1]) {
 			err = ErrBadCRC
